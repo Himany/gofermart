@@ -1,0 +1,120 @@
+package storage
+
+import (
+	"database/sql"
+	"fmt"
+)
+
+type dbStorageData struct {
+	db *sql.DB
+}
+
+/*
+	users
+	- PK id int
+	- login UNIQUE VARCHAR
+	- password_hash TEXT
+	- created_at TIMESTAMPTZ DEFAULT now()
+
+	orders
+	- PK id int
+	- FK(users) user_id int
+	- number UNIQUE VARCHAR
+	- status ENUM('NEW','PROCESSING','INVALID','PROCESSED')
+	- accrual NUMERIC(18,2)
+	- created_at TIMESTAMPTZ DEFAULT now()
+
+	transactions
+	- PK id int
+	- FK(users) user_id int
+	- order_number VARCHAR
+	- amount NUMERIC(18,2)
+	- type ENUM('ADD','SUB')
+	- created_at TIMESTAMPTZ DEFAULT now()
+*/
+
+const (
+	createOrderStatusEnum = `DO $$
+	BEGIN
+		IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'order_status') THEN
+			CREATE TYPE order_status AS ENUM ('NEW','PROCESSING','INVALID','PROCESSED');
+		END IF;
+	END$$;`
+
+	createTxnTypeEnum = `DO $$
+	BEGIN
+		IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transaction_type') THEN
+			CREATE TYPE transaction_type AS ENUM ('ADD','SUB');
+		END IF;
+	END$$;`
+
+	createUsersTable = `CREATE TABLE IF NOT EXISTS users (
+		id INT PRIMARY KEY,
+		login TEXT NOT NULL UNIQUE,
+		password_hash TEXT NOT NULL,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	);`
+
+	createOrdersTable = `CREATE TABLE IF NOT EXISTS orders (
+		id INT PRIMARY KEY,
+		user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		number TEXT NOT NULL UNIQUE,
+		status order_status NOT NULL DEFAULT 'NEW',
+		accrual NUMERIC(18,2),
+		created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	);`
+
+	createTransactionsTable = `CREATE TABLE IF NOT EXISTS transactions (
+		id INT PRIMARY KEY,
+		user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		order_number TEXT NOT NULL,
+		amount NUMERIC(18,2) NOT NULL CHECK (amount > 0),
+		type transaction_type NOT NULL,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	);`
+)
+
+func (s *dbStorageData) InitSchema() (err error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	tables := []string{
+		createOrderStatusEnum,
+		createTxnTypeEnum,
+		createUsersTable,
+		createOrdersTable,
+		createTransactionsTable,
+	}
+
+	for i, q := range tables {
+		if _, execErr := tx.Exec(q); execErr != nil {
+			err = fmt.Errorf("exec tables %d: %w", i, execErr)
+			return err
+		}
+	}
+
+	if commitErr := tx.Commit(); commitErr != nil {
+		return fmt.Errorf("commit: %w", commitErr)
+	}
+	return nil
+}
+
+func NewPostgresStorage(db *sql.DB) (*dbStorageData, error) {
+	s := &dbStorageData{db: db}
+	if err := s.InitSchema(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *dbStorageData) Ping() error {
+	err := s.db.Ping()
+	return err
+}

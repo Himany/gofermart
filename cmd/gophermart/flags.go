@@ -13,7 +13,7 @@ var envSet = map[string]bool{}
 // Стандратные значения
 const defaultRunAddress = "localhost:8080"
 const defaultDataBaseURI = "host=localhost user=postgres password=123321 dbname=gofermart sslmode=disable"
-const defaultAccrualSystemAddress = "localhost:8080"
+const defaultAccrualSystemAddress = "localhost:8081"
 const defaultLogLevel = "info"
 const defaultJWTTokenTTL = 100
 const defaultJWTSecret = "mysecret"

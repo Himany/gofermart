@@ -15,7 +15,7 @@ const defaultRunAddress = "localhost:8080"
 const defaultDataBaseURI = "host=localhost user=postgres password=123321 dbname=gofermart sslmode=disable"
 const defaultAccrualSystemAddress = "localhost:8081"
 const defaultLogLevel = "info"
-const defaultJWTTokenTTL = 100
+const defaultJWTTokenTTL = 43200
 const defaultJWTSecret = "mysecret"
 
 func parseFlags() (*config.Config, error) {

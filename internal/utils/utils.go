@@ -6,3 +6,10 @@ func SetStringIfUnset(envSet map[string]bool, envKey string, cfgValue *string, f
 	}
 	*cfgValue = flagValue
 }
+
+func SetIntIfUnset(envSet map[string]bool, envKey string, cfgValue *int, flagValue int) {
+	if envSet[envKey] {
+		return
+	}
+	*cfgValue = flagValue
+}

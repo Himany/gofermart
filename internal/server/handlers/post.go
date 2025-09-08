@@ -1,6 +1,16 @@
 package handlers
 
-import "net/http"
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"strings"
+
+	"github.com/Himany/gofermart/internal/logger"
+	"github.com/Himany/gofermart/internal/models"
+	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
+)
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	/*
@@ -16,6 +26,58 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		409 — логин уже занят;
 		500 — внутренняя ошибка сервера.
 	*/
+
+	var registerRequest models.RegisterRequest
+	var buf bytes.Buffer
+
+	//читаем тело запроса
+	_, err := buf.ReadFrom(r.Body)
+	if err != nil {
+		logger.Log.Error("Register (ReadFrom)", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	//десериализуем JSON в Visitor
+	if err = json.Unmarshal(buf.Bytes(), &registerRequest); err != nil {
+		logger.Log.Error("Register (Unmarshal)", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	//Проверка объекта
+	if err = validateRegisterJSON(registerRequest); err != nil {
+		logger.Log.Error("Register (validateRegisterJSON)", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(registerRequest.Password), bcrypt.DefaultCost)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	uid, err := h.Repo.CreateUser(registerRequest.Login, string(hash))
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		logger.Log.Error("Register (CreateUser)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	token, err := h.signJWT(uid, registerRequest.Login)
+	if err != nil {
+		logger.Log.Error("Register (signJWT)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	h.setJWTHeader(w, token)
+	h.setJWTCookie(w, token)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +94,48 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		401 — неверная пара логин/пароль;
 		500 — внутренняя ошибка сервера.
 	*/
+	var registerRequest models.RegisterRequest
+	var buf bytes.Buffer
+
+	//читаем тело запроса
+	_, err := buf.ReadFrom(r.Body)
+	if err != nil {
+		logger.Log.Error("Register (ReadFrom)", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	//десериализуем JSON в Visitor
+	if err = json.Unmarshal(buf.Bytes(), &registerRequest); err != nil {
+		logger.Log.Error("Register (Unmarshal)", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	//Проверка объекта
+	if err = validateRegisterJSON(registerRequest); err != nil {
+		logger.Log.Error("Register (validateRegisterJSON)", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	id, hash, err := h.Repo.GetUserByLogin(registerRequest.Login)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(registerRequest.Password)) != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	token, err := h.signJWT(id, registerRequest.Login)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	h.setJWTHeader(w, token)
+	h.setJWTCookie(w, token)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) AddOrder(w http.ResponseWriter, r *http.Request) {

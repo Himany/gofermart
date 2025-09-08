@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 type dbStorageData struct {
@@ -117,4 +118,33 @@ func NewPostgresStorage(db *sql.DB) (*dbStorageData, error) {
 func (s *dbStorageData) Ping() error {
 	err := s.db.Ping()
 	return err
+}
+
+func (s *dbStorageData) CreateUser(login, passwordHash string) (int, error) {
+	login = strings.ToLower(login)
+	var id int
+	err := s.db.QueryRow(
+		`INSERT INTO users (login, password_hash)
+         VALUES ($1, $2)
+         RETURNING id`,
+		login, passwordHash,
+	).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func (s *dbStorageData) GetUserByLogin(login string) (int, string, error) {
+	login = strings.ToLower(login)
+	var id int
+	var hash string
+	err := s.db.QueryRow(
+		`SELECT id, password_hash FROM users WHERE login = $1`,
+		login,
+	).Scan(&id, &hash)
+	if err != nil {
+		return 0, "", err
+	}
+	return id, hash, nil
 }

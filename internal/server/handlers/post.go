@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -27,7 +28,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		500 — внутренняя ошибка сервера.
 	*/
 
-	var registerRequest models.RegisterRequest
+	var registerRequest models.AuthDataRequest
 	var buf bytes.Buffer
 
 	//читаем тело запроса
@@ -94,7 +95,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		401 — неверная пара логин/пароль;
 		500 — внутренняя ошибка сервера.
 	*/
-	var registerRequest models.RegisterRequest
+	var loginRequest models.AuthDataRequest
 	var buf bytes.Buffer
 
 	//читаем тело запроса
@@ -106,29 +107,29 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//десериализуем JSON в Visitor
-	if err = json.Unmarshal(buf.Bytes(), &registerRequest); err != nil {
+	if err = json.Unmarshal(buf.Bytes(), &loginRequest); err != nil {
 		logger.Log.Error("Register (Unmarshal)", zap.Error(err))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	//Проверка объекта
-	if err = validateRegisterJSON(registerRequest); err != nil {
+	if err = validateRegisterJSON(loginRequest); err != nil {
 		logger.Log.Error("Register (validateRegisterJSON)", zap.Error(err))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	id, hash, err := h.Repo.GetUserByLogin(registerRequest.Login)
+	id, hash, err := h.Repo.GetUserByLogin(loginRequest.Login)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(registerRequest.Password)) != nil {
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(loginRequest.Password)) != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	token, err := h.signJWT(id, registerRequest.Login)
+	token, err := h.signJWT(id, loginRequest.Login)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -155,6 +156,54 @@ func (h *Handler) AddOrder(w http.ResponseWriter, r *http.Request) {
 		422 — неверный формат номера заказа;
 		500 — внутренняя ошибка сервера.
 	*/
+	userId, isAuth := h.authFromRequest(r)
+	if userId <= 0 || !isAuth {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	defer r.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(r.Body, 512))
+	if err != nil {
+		logger.Log.Error("AddOrder (ReadAll)", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	orderNumber := strings.TrimSpace(string(body))
+	if orderNumber == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !validateLuhn(orderNumber) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		return
+	}
+
+	ownerID, found, err := h.Repo.GetOrderOwner(orderNumber)
+	if err != nil {
+		logger.Log.Error("AddOrder (GetOrderOwner)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if found {
+		if ownerID == userId {
+			w.WriteHeader(http.StatusOK)
+		} else {
+			w.WriteHeader(http.StatusConflict)
+		}
+		return
+	}
+
+	if err := h.Repo.AddOrder(userId, orderNumber); err != nil {
+		logger.Log.Error("AddOrder (AddOrder)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+	if h.AccrualPool != nil {
+		h.AccrualPool.Submit(userId, orderNumber)
+	}
 }
 
 func (h *Handler) BonusWithdraw(w http.ResponseWriter, r *http.Request) {

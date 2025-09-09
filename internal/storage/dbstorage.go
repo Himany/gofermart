@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -147,4 +148,42 @@ func (s *dbStorageData) GetUserByLogin(login string) (int, string, error) {
 		return 0, "", err
 	}
 	return id, hash, nil
+}
+
+func (s *dbStorageData) GetOrderOwner(number string) (userID int, found bool, err error) {
+	err = s.db.QueryRow(
+		`SELECT user_id FROM orders WHERE number = $1`,
+		number,
+	).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	return userID, true, nil
+}
+
+func (s *dbStorageData) AddOrder(userID int, number string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO orders (user_id, number) VALUES ($1, $2)`,
+		userID, number,
+	)
+	return err
+}
+
+func (s *dbStorageData) UpdateOrderStatus(number string, status string, accrual *float64) error {
+	_, err := s.db.Exec(
+		`UPDATE orders SET status = $2, accrual = $3 WHERE number = $1`,
+		number, status, accrual,
+	)
+	return err
+}
+
+func (s *dbStorageData) AddAccrual(userID int, orderNumber string, amount float64) error {
+	_, err := s.db.Exec(
+		`INSERT INTO transactions (user_id, order_number, amount, type) VALUES ($1, $2, $3, 'ADD')`,
+		userID, orderNumber, amount,
+	)
+	return err
 }

@@ -1,20 +1,26 @@
 package models
 
-type RegisterRequest struct {
+type AuthDataRequest struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
-}
-
-type LoginRequest struct {
-	Login    string `json:"login"`
-	Password string `json:"password"`
-}
-
-type AddOrderRequest struct {
-	OrderNumber string `json:"order_number"`
 }
 
 type BonusWithdrawRequest struct {
 	Order string `json:"order"`
 	Sum   int    `json:"sum"`
+}
+
+type StatusOrder string
+
+const (
+	StatusRegistered StatusOrder = "REGISTERED"
+	StatusInvalid    StatusOrder = "INVALID"
+	StatusProcessing StatusOrder = "PROCESSING"
+	StatusProcessed  StatusOrder = "PROCESSED"
+)
+
+type OrderInfo struct {
+	Order   string      `json:"order"`
+	Status  StatusOrder `json:"status"`
+	Accrual *float64    `json:"accrual,omitempty"`
 }

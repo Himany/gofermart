@@ -156,8 +156,8 @@ func (h *Handler) AddOrder(w http.ResponseWriter, r *http.Request) {
 		422 — неверный формат номера заказа;
 		500 — внутренняя ошибка сервера.
 	*/
-	userId, isAuth := h.authFromRequest(r)
-	if userId <= 0 || !isAuth {
+	userID, isAuth := h.authFromRequest(r)
+	if userID <= 0 || !isAuth {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -186,7 +186,7 @@ func (h *Handler) AddOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if found {
-		if ownerID == userId {
+		if ownerID == userID {
 			w.WriteHeader(http.StatusOK)
 		} else {
 			w.WriteHeader(http.StatusConflict)
@@ -194,7 +194,7 @@ func (h *Handler) AddOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Repo.AddOrder(userId, orderNumber); err != nil {
+	if err := h.Repo.AddOrder(userID, orderNumber); err != nil {
 		logger.Log.Error("AddOrder (AddOrder)", zap.Error(err))
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -202,7 +202,7 @@ func (h *Handler) AddOrder(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusAccepted)
 	if h.AccrualPool != nil {
-		h.AccrualPool.Submit(userId, orderNumber)
+		h.AccrualPool.Submit(userID, orderNumber)
 	}
 }
 

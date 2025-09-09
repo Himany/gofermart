@@ -32,6 +32,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 
 	//читаем тело запроса
+	defer r.Body.Close()
 	_, err := buf.ReadFrom(r.Body)
 	if err != nil {
 		logger.Log.Error("Register (ReadFrom)", zap.Error(err))
@@ -59,7 +60,9 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uid, err := h.Repo.CreateUser(registerRequest.Login, string(hash))
+	login := strings.ToLower(registerRequest.Login)
+	login = strings.TrimSpace(login)
+	uid, err := h.Repo.CreateUser(login, string(hash))
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
 			w.WriteHeader(http.StatusConflict)
@@ -99,23 +102,24 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 
 	//читаем тело запроса
+	defer r.Body.Close()
 	_, err := buf.ReadFrom(r.Body)
 	if err != nil {
-		logger.Log.Error("Register (ReadFrom)", zap.Error(err))
+		logger.Log.Error("Login (ReadFrom)", zap.Error(err))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	//десериализуем JSON в Visitor
 	if err = json.Unmarshal(buf.Bytes(), &loginRequest); err != nil {
-		logger.Log.Error("Register (Unmarshal)", zap.Error(err))
+		logger.Log.Error("Login (Unmarshal)", zap.Error(err))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	//Проверка объекта
 	if err = validateRegisterJSON(loginRequest); err != nil {
-		logger.Log.Error("Register (validateRegisterJSON)", zap.Error(err))
+		logger.Log.Error("Login (validateRegisterJSON)", zap.Error(err))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -229,4 +233,58 @@ func (h *Handler) BonusWithdraw(w http.ResponseWriter, r *http.Request) {
 		422 — неверный номер заказа;
 		500 — внутренняя ошибка сервера.
 	*/
+
+	userID, isAuth := h.authFromRequest(r)
+	if userID <= 0 || !isAuth {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var withdrawRequest models.BonusWithdrawRequest
+	var buf bytes.Buffer
+
+	//читаем тело запроса
+	defer r.Body.Close()
+	_, err := buf.ReadFrom(r.Body)
+	if err != nil {
+		logger.Log.Error("BonusWithdraw (ReadFrom)", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	//десериализуем JSON в Visitor
+	if err = json.Unmarshal(buf.Bytes(), &withdrawRequest); err != nil {
+		logger.Log.Error("BonusWithdraw (Unmarshal)", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	//Проверка объекта
+	if err = validateWithdrawJSON(withdrawRequest); err != nil {
+		logger.Log.Error("BonusWithdraw (validateWithdrawJSON)", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	orderNumber := strings.TrimSpace(withdrawRequest.Order)
+	if orderNumber == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !validateLuhn(orderNumber) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		return
+	}
+
+	if err := h.Repo.AddWithdraw(userID, orderNumber, withdrawRequest.Sum); err != nil {
+		if strings.Contains(err.Error(), "insufficient funds") {
+			w.WriteHeader(http.StatusPaymentRequired)
+			return
+		}
+		logger.Log.Error("BonusWithdraw (AddWithdraw)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

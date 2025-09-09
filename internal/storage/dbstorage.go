@@ -122,7 +122,6 @@ func (s *dbStorageData) Ping() error {
 }
 
 func (s *dbStorageData) CreateUser(login, passwordHash string) (int, error) {
-	login = strings.ToLower(login)
 	var id int
 	err := s.db.QueryRow(
 		`INSERT INTO users (login, password_hash)
@@ -186,4 +185,47 @@ func (s *dbStorageData) AddAccrual(userID int, orderNumber string, amount float6
 		userID, orderNumber, amount,
 	)
 	return err
+}
+
+func (s *dbStorageData) GetBalance(userID int) (float64, error) {
+	var balance float64
+	err := s.db.QueryRow(`
+        SELECT COALESCE(SUM(
+            CASE WHEN type='ADD' THEN amount
+                 WHEN type='SUB' THEN -amount
+                 ELSE 0 END),0)
+        FROM transactions
+        WHERE user_id = $1`, userID).Scan(&balance)
+	return balance, err
+}
+
+func (s *dbStorageData) AddWithdraw(userID int, orderNumber string, amount float64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	balance, err := s.GetBalance(userID)
+	if err != nil {
+		return err
+	}
+	if balance < amount {
+		return errors.New("insufficient funds")
+	}
+
+	_, err = tx.Exec(
+		`INSERT INTO transactions (user_id, order_number, amount, type)
+         VALUES ($1, $2, $3, 'SUB')`,
+		userID, orderNumber, amount,
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }

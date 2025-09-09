@@ -16,6 +16,9 @@ type MarketRepo interface {
 	AddOrder(userID int, number string) error
 	UpdateOrderStatus(number string, status string, accrual *float64) error
 	AddAccrual(userID int, orderNumber string, amount float64) error
+
+	GetBalance(userID int) (float64, error)
+	AddWithdraw(userID int, orderNumber string, amount float64) error
 }
 
 type Handler struct {

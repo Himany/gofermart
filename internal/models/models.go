@@ -6,8 +6,8 @@ type AuthDataRequest struct {
 }
 
 type BonusWithdrawRequest struct {
-	Order string `json:"order"`
-	Sum   int    `json:"sum"`
+	Order string  `json:"order"`
+	Sum   float64 `json:"sum"`
 }
 
 type StatusOrder string

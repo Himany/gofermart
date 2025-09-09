@@ -15,3 +15,13 @@ func validateRegisterJSON(r models.AuthDataRequest) error {
 	}
 	return nil
 }
+
+func validateWithdrawJSON(r models.BonusWithdrawRequest) error {
+	if r.Order == "" {
+		return fmt.Errorf("order is required")
+	}
+	if r.Sum <= 0 {
+		return fmt.Errorf("sum must be greater than zero")
+	}
+	return nil
+}

@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/Himany/gofermart/internal/models"
 )
 
 type dbStorageData struct {
@@ -228,4 +231,85 @@ func (s *dbStorageData) AddWithdraw(userID int, orderNumber string, amount float
 	}
 
 	return tx.Commit()
+}
+
+func (s *dbStorageData) ListUserOrders(userID int) ([]models.OrderDTO, error) {
+	rows, err := s.db.Query(`
+        SELECT number, status, accrual, created_at
+        FROM orders
+        WHERE user_id = $1
+        ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []models.OrderDTO
+	for rows.Next() {
+		var (
+			number    string
+			status    string
+			createdAt time.Time
+			accrualN  sql.NullFloat64
+		)
+		if err := rows.Scan(&number, &status, &accrualN, &createdAt); err != nil {
+			return nil, err
+		}
+		var accPtr *float64
+		if accrualN.Valid {
+			v := accrualN.Float64
+			accPtr = &v
+		}
+		res = append(res, models.OrderDTO{
+			Number:     number,
+			Status:     status,
+			Accrual:    accPtr,
+			UploadedAt: createdAt.Format(time.RFC3339),
+		})
+	}
+	return res, rows.Err()
+}
+
+func (s *dbStorageData) GetBalanceParts(userID int) (float64, float64, error) {
+	var addSum, subSum float64
+	err := s.db.QueryRow(`
+        SELECT
+            COALESCE(SUM(CASE WHEN type='ADD' THEN amount END),0),
+            COALESCE(SUM(CASE WHEN type='SUB' THEN amount END),0)
+        FROM transactions
+        WHERE user_id = $1`, userID).Scan(&addSum, &subSum)
+	if err != nil {
+		return 0, 0, err
+	}
+	return addSum - subSum, subSum, nil
+}
+
+func (s *dbStorageData) ListWithdrawals(userID int) ([]models.WithdrawalDTO, error) {
+	rows, err := s.db.Query(`
+        SELECT order_number, amount, created_at
+        FROM transactions
+        WHERE user_id = $1 AND type='SUB'
+        ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []models.WithdrawalDTO
+	for rows.Next() {
+		var (
+			order     string
+			amount    float64
+			createdAt time.Time
+		)
+		if err := rows.Scan(&order, &amount, &createdAt); err != nil {
+			return nil, err
+		}
+		res = append(res, models.WithdrawalDTO{
+			Order:       order,
+			Sum:         amount,
+			ProcessedAt: createdAt.Format(time.RFC3339),
+		})
+	}
+	return res, rows.Err()
 }

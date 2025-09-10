@@ -24,3 +24,16 @@ type OrderInfo struct {
 	Status  StatusOrder `json:"status"`
 	Accrual *float64    `json:"accrual,omitempty"`
 }
+
+type OrderDTO struct {
+	Number     string   `json:"number"`
+	Status     string   `json:"status"`
+	Accrual    *float64 `json:"accrual,omitempty"`
+	UploadedAt string   `json:"uploaded_at"`
+}
+
+type WithdrawalDTO struct {
+	Order       string  `json:"order"`
+	Sum         float64 `json:"sum"`
+	ProcessedAt string  `json:"processed_at"`
+}

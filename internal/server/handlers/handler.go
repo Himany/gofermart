@@ -3,6 +3,7 @@ package handlers
 import (
 	"time"
 
+	"github.com/Himany/gofermart/internal/models"
 	"github.com/Himany/gofermart/internal/worker"
 )
 
@@ -19,6 +20,10 @@ type MarketRepo interface {
 
 	GetBalance(userID int) (float64, error)
 	AddWithdraw(userID int, orderNumber string, amount float64) error
+
+	ListUserOrders(userID int) ([]models.OrderDTO, error)
+	GetBalanceParts(userID int) (current float64, withdrawn float64, err error)
+	ListWithdrawals(userID int) ([]models.WithdrawalDTO, error)
 }
 
 type Handler struct {

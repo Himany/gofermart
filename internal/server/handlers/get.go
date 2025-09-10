@@ -1,6 +1,12 @@
 package handlers
 
-import "net/http"
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/Himany/gofermart/internal/logger"
+	"go.uber.org/zap"
+)
 
 func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
 	/*
@@ -39,8 +45,37 @@ func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
 		401 — пользователь не авторизован.
 		500 — внутренняя ошибка сервера.
 	*/
-}
+	userID, isAuth := h.authFromRequest(r)
+	if userID <= 0 || !isAuth {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 
+	orders, err := h.Repo.ListUserOrders(userID)
+	if err != nil {
+		logger.Log.Error("GetOrders (ListUserOrders)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if len(orders) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	payload, err := json.Marshal(orders)
+	if err != nil {
+		logger.Log.Error("GetOrders (Marshal)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(payload); err != nil {
+		logger.Log.Warn("GetOrders (write)", zap.Error(err))
+		return
+	}
+}
 func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
 	/*
 		ТОЛЬКО ДЛЯ АВТОРИЗОВАННЫХ ПОЛЬЗОВАТЕЛЕЙ
@@ -54,6 +89,40 @@ func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
 		401 — пользователь не авторизован.
 		500 — внутренняя ошибка сервера.
 	*/
+	userID, isAuth := h.authFromRequest(r)
+	if userID <= 0 || !isAuth {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	current, withdrawn, err := h.Repo.GetBalanceParts(userID)
+	if err != nil {
+		logger.Log.Error("GetBalance (GetBalanceParts)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	resp := struct {
+		Current   float64 `json:"current"`
+		Withdrawn float64 `json:"withdrawn"`
+	}{
+		Current:   current,
+		Withdrawn: withdrawn,
+	}
+
+	payload, err := json.Marshal(resp)
+	if err != nil {
+		logger.Log.Error("GetBalance (Marshal)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(payload); err != nil {
+		logger.Log.Warn("GetBalance (write)", zap.Error(err))
+		return
+	}
 }
 
 func (h *Handler) GetBonusWithdrawals(w http.ResponseWriter, r *http.Request) {
@@ -76,4 +145,34 @@ func (h *Handler) GetBonusWithdrawals(w http.ResponseWriter, r *http.Request) {
 		401 — пользователь не авторизован.
 		500 — внутренняя ошибка сервера.
 	*/
+	userID, isAuth := h.authFromRequest(r)
+	if userID <= 0 || !isAuth {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	withdrawals, err := h.Repo.ListWithdrawals(userID)
+	if err != nil {
+		logger.Log.Error("GetBonusWithdrawals (ListWithdrawals)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if len(withdrawals) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	payload, err := json.Marshal(withdrawals)
+	if err != nil {
+		logger.Log.Error("GetBonusWithdrawals (Marshal)", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(payload); err != nil {
+		logger.Log.Warn("GetBonusWithdrawals (write)", zap.Error(err))
+		return
+	}
 }

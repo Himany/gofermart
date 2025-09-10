@@ -3,7 +3,6 @@ package accrual
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Himany/gofermart/internal/models"
@@ -21,10 +20,8 @@ func New(baseURL string, timeout time.Duration) *Client {
 		SetTimeout(timeout).
 		SetHeader("Accept", "application/json")
 
-	baseURL = "http://" + baseURL
-
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
+		baseURL: baseURL,
 		HTTP:    c,
 	}
 }
